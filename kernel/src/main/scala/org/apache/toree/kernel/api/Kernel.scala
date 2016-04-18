@@ -17,32 +17,32 @@
 
 package org.apache.toree.kernel.api
 
-import java.io.{OutputStream, InputStream, PrintStream}
+import java.io.{InputStream, PrintStream}
 import java.util.concurrent.ConcurrentHashMap
 
+import com.typesafe.config.Config
+import org.apache.spark.api.java.JavaSparkContext
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.toree.annotations.Experimental
 import org.apache.toree.boot.layer.InterpreterManager
 import org.apache.toree.comm.CommManager
 import org.apache.toree.global
+import org.apache.toree.global.ExecuteRequestState
 import org.apache.toree.interpreter.Results.Result
 import org.apache.toree.interpreter._
 import org.apache.toree.kernel.protocol.v5
-import org.apache.toree.kernel.protocol.v5.{KMBuilder, KernelMessage}
 import org.apache.toree.kernel.protocol.v5.kernel.ActorLoader
 import org.apache.toree.kernel.protocol.v5.magic.MagicParser
-import org.apache.toree.kernel.protocol.v5.stream.{KernelOutputStream, KernelInputStream}
-import org.apache.toree.magic.{MagicLoader, MagicExecutor}
+import org.apache.toree.kernel.protocol.v5.stream.KernelOutputStream
+import org.apache.toree.kernel.protocol.v5.{KMBuilder, KernelMessage}
+import org.apache.toree.magic.MagicManager
+import org.apache.toree.plugins.PluginManager
 import org.apache.toree.utils.{KeyValuePairUtils, LogLike}
-import com.typesafe.config.Config
-import org.apache.spark.api.java.JavaSparkContext
-import org.apache.spark.sql.SQLContext
-import org.apache.spark.{SparkContext, SparkConf}
-import scala.util.{Try, DynamicVariable}
-
-import scala.reflect.runtime.universe._
 
 import scala.language.dynamics
-import org.apache.toree.global.ExecuteRequestState
+import scala.reflect.runtime.universe._
+import scala.util.{DynamicVariable, Try}
 
 /**
  * Represents the main kernel API to be used for interaction.
@@ -58,7 +58,7 @@ class Kernel (
   private val actorLoader: ActorLoader,
   val interpreterManager: InterpreterManager,
   val comm: CommManager,
-  val magicLoader: MagicLoader
+  val pluginManager: PluginManager
 ) extends KernelLike with LogLike {
 
   /**
@@ -96,12 +96,12 @@ class Kernel (
   /**
    * Represents magics available through the kernel.
    */
-  val magics = new MagicExecutor(magicLoader)
+  val magics = new MagicManager(pluginManager)
 
   /**
    * Represents magic parsing functionality.
    */
-  val magicParser = new MagicParser(magicLoader)
+  val magicParser = new MagicParser(magics)
 
   /**
    * Represents the data that can be shared using the kernel as the middleman.
@@ -110,13 +110,11 @@ class Kernel (
    */
   val data: java.util.Map[String, Any] = new ConcurrentHashMap[String, Any]()
 
-
-  interpreterManager.initializeInterpreters(this)
-
   val interpreter = interpreterManager.defaultInterpreter.get
 
   /**
    * Handles the output of interpreting code.
+   *
    * @param output the output of the interpreter
    * @return (success, message) or (failure, message)
    */
@@ -175,13 +173,35 @@ class Kernel (
    *
    * @param parentMessage The message to serve as the parent of outgoing
    *                      messages sent as a result of using streaming methods
-   *
    * @return The collection of streaming methods
    */
   private[toree] def stream(
     parentMessage: v5.KernelMessage = lastKernelMessage()
   ): StreamMethods = {
     new StreamMethods(actorLoader, parentMessage)
+  }
+
+  /**
+   * Returns a collection of methods that can be used to display data from the
+   * kernel to the client.
+   *
+   * @return The collection of display methods
+   */
+  override def display: DisplayMethodsLike = display()
+
+  /**
+   * Constructs a new instance of the stream methods using the specified
+   * kernel message instance.
+   *
+   * @param parentMessage The message to serve as the parent of outgoing
+   *                      messages sent as a result of using streaming methods
+   * @return The collection of streaming methods
+   */
+  private[toree] def display(
+    parentMessage: v5.KernelMessage = lastKernelMessage(),
+    kmBuilder: v5.KMBuilder = v5.KMBuilder()
+  ): DisplayMethods = {
+    new DisplayMethods(actorLoader, parentMessage, kmBuilder)
   }
 
   /**
@@ -201,7 +221,6 @@ class Kernel (
    *                      by the factory methods
    * @param kmBuilder The builder to be used by objects created by factory
    *                  methods
-   *
    * @return The collection of factory methods
    */
   private[toree] def factory(
@@ -317,7 +336,6 @@ class Kernel (
    * Retrieves the last kernel message received by the kernel.
    *
    * @throws IllegalArgumentException If no kernel message has been received
-   *
    * @return The kernel message instance
    */
   private def lastKernelMessage() = {
@@ -335,11 +353,13 @@ class Kernel (
     val sparkMaster = _sparkConf.getOption("spark.master").getOrElse("not_set")
     logger.info( s"Connecting to spark.master $sparkMaster")
 
-    updateInterpreterWithSparkContext(interpreter, sparkContext)
-    updateInterpreterWithSqlContext(interpreter, sqlContext)
+    // TODO: Convert to events
+    pluginManager.dependencyManager.add(_sparkConf)
+    pluginManager.dependencyManager.add(_sparkContext)
+    pluginManager.dependencyManager.add(_javaSparkContext)
+    pluginManager.dependencyManager.add(_sqlContext)
 
-    magicLoader.dependencyMap =
-      magicLoader.dependencyMap.setSparkContext(_sparkContext)
+    pluginManager.fireEvent("sparkReady")
 
     _sparkContext
   }
@@ -351,31 +371,15 @@ class Kernel (
   }
 
   // TODO: Think of a better way to test without exposing this
-  protected[kernel] def createSparkConf(conf: SparkConf) = {
+  protected[toree] def createSparkConf(conf: SparkConf) = {
 
     logger.info("Setting deployMode to client")
     conf.set("spark.submit.deployMode", "client")
-
-    KeyValuePairUtils.stringToKeyValuePairSeq(
-      _config.getString("spark_configuration")
-    ).foreach { keyValuePair =>
-      logger.info(s"Setting ${keyValuePair.key} to ${keyValuePair.value}")
-      Try(conf.set(keyValuePair.key, keyValuePair.value))
-    }
-
-    // TODO: Move SparkIMain to private and insert in a different way
-    logger.warn("Locked to Scala interpreter with SparkIMain until decoupled!")
-
-    // TODO: Construct class server outside of SparkIMain
-    logger.warn("Unable to control initialization of REPL class server!")
-    logger.info("REPL Class Server Uri: " + interpreter.classServerURI)
-    conf.set("spark.repl.class.uri", interpreter.classServerURI)
-
     conf
   }
 
   // TODO: Think of a better way to test without exposing this
-  protected[kernel] def initializeSparkContext(sparkConf: SparkConf): SparkContext = {
+  protected[toree] def initializeSparkContext(sparkConf: SparkConf): SparkContext = {
 
     logger.debug("Constructing new Spark Context")
     // TODO: Inject stream redirect headers in Spark dynamically
@@ -395,15 +399,7 @@ class Kernel (
     sparkContext
   }
 
-  // TODO: Think of a better way to test without exposing this
-  protected[kernel] def updateInterpreterWithSparkContext(
-    interpreter: Interpreter, sparkContext: SparkContext
-  ) = {
-
-    interpreter.bindSparkContext(sparkContext)
-  }
-
-  protected[kernel] def initializeSqlContext(
+  protected[toree] def initializeSqlContext(
     sparkContext: SparkContext
   ): SQLContext = {
     val sqlContext: SQLContext = try {
@@ -430,12 +426,6 @@ class Kernel (
     }
 
     sqlContext
-  }
-
-  protected[kernel] def updateInterpreterWithSqlContext(
-    interpreter: Interpreter, sqlContext: SQLContext
-  ): Unit = {
-    interpreter.bindSqlContext(sqlContext)
   }
 
   override def interpreter(name: String): Option[Interpreter] = {

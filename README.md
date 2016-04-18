@@ -1,6 +1,7 @@
 [![Build Status][build-badge]][build-url]
 [![License][license-badge]][license-url]
 [![Join the chat at https://gitter.im/ibm-et/spark-kernel][gitter-badge]][gitter-url]
+[![Binder](http://mybinder.org/badge.svg)](http://mybinder.org/repo/apache/incubator-toree)
 
 Apache Toree
 ============
@@ -51,6 +52,16 @@ This results in 2 packages.
 - `./dist/toree-<VERSION>.tar.gz` is a `pip` installable package that adds Toree as a Jupyter kernel.
 
 NOTE: `make release` uses `docker`. Please refer to `docker` installation instructions for your system. `USE_VAGRANT` is not supported by this `make` target.
+
+Run Examples
+============
+To play with the example notebooks, run
+```
+make jupyter
+```
+
+A notebook server will be launched in a `Docker` container with Toree and some other dependencies installed.
+Refer to your `Docker` setup for the ip address. The notebook will be at `http://<ip>:8888/`.
 
 Install
 =======

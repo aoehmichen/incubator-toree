@@ -14,30 +14,13 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License
  */
-
-package org.apache.toree.interpreter.broker.producer
-
-import org.apache.spark.SparkContext
-import org.apache.spark.sql.SQLContext
+package test.utils
 
 /**
- * Represents a producer for a SQLContext.
+ * Class that is not a plugin, but has an empty constructor.
+ *
+ * @note Exists in global space instead of nested in test classes due to the
+ *       fact that Scala creates a non-nullary constructor when a class is
+ *       nested.
  */
-trait SQLContextProducerLike {
-  /**
-   * Creates a new SQLContext instance.
-   *
-   * @param sparkContext The SparkContext instance to use to create the SQL one
-   *
-   * @return The new SQLContext
-   */
-  def newSQLContext(sparkContext: SparkContext): SQLContext
-}
-
-/**
- * Represents the standard producer for a SQLContext.
- */
-trait StandardSQLContextProducer extends SQLContextProducerLike {
-  def newSQLContext(sparkContext: SparkContext): SQLContext =
-    new SQLContext(sparkContext)
-}
+class NotAPlugin

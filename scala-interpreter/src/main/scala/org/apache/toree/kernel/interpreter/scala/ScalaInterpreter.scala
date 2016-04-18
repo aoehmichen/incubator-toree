@@ -22,48 +22,57 @@ import java.net.{URL, URLClassLoader}
 import java.nio.charset.Charset
 import java.util.concurrent.ExecutionException
 
-import akka.actor.Actor
-import akka.actor.Actor.Receive
+import com.typesafe.config.{ConfigFactory, Config}
+import org.apache.spark.SparkContext
+import org.apache.spark.repl.{SparkCommandLine, SparkIMain, SparkJLineCompletion}
+import org.apache.spark.sql.SQLContext
 import org.apache.toree.global.StreamState
-import org.apache.toree.interpreter
 import org.apache.toree.interpreter._
 import org.apache.toree.interpreter.imports.printers.{WrapperConsole, WrapperSystem}
 import org.apache.toree.kernel.api.{KernelLike, KernelOptions}
 import org.apache.toree.utils.{MultiOutputStream, TaskManager}
-import org.apache.spark.SparkContext
-import org.apache.spark.repl.{SparkCommandLine, SparkIMain, SparkJLineCompletion}
-import org.apache.spark.sql.SQLContext
 import org.slf4j.LoggerFactory
 
 import scala.annotation.tailrec
 import scala.concurrent.{Await, Future}
 import scala.language.reflectiveCalls
 import scala.tools.nsc.backend.JavaPlatform
-import scala.tools.nsc.interpreter.{OutputStream, IR, JPrintWriter, InputStream}
+import scala.tools.nsc.interpreter.{IR, InputStream, JPrintWriter, OutputStream}
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.util.{ClassPath, MergedClassPath}
 import scala.tools.nsc.{Global, Settings, io}
 import scala.util.{Try => UtilTry}
 
-class ScalaInterpreter() extends Interpreter {
+class ScalaInterpreter(private val config:Config = ConfigFactory.load) extends Interpreter {
 
   protected val logger = LoggerFactory.getLogger(this.getClass.getName)
 
   private val ExecutionExceptionName = "lastException"
-  protected var settings: Settings = null
-
   protected val _thisClassloader = this.getClass.getClassLoader
+
   protected val _runtimeClassloader =
     new URLClassLoader(Array(), _thisClassloader) {
       def addJar(url: URL) = this.addURL(url)
     }
-
-
   protected val lastResultOut = new ByteArrayOutputStream()
+
+
   protected val multiOutputStream = MultiOutputStream(List(Console.out, lastResultOut))
   private var taskManager: TaskManager = _
   var sparkIMain: SparkIMain = _
   protected var jLineCompleter: SparkJLineCompletion = _
+
+  protected var settings: Settings = newSettings(interpreterArgs())
+
+  settings.classpath.value = buildClasspath(_thisClassloader)
+  settings.embeddedDefaults(_runtimeClassloader)
+
+  private val maxInterpreterThreads: Int = {
+    if(config.hasPath("max_interpreter_threads"))
+      config.getInt("max_interpreter_threads")
+    else
+      TaskManager.DefaultMaximumWorkers
+  }
 
   protected def newSparkIMain(
     settings: Settings, out: JPrintWriter
@@ -73,8 +82,6 @@ class ScalaInterpreter() extends Interpreter {
 
     s
   }
-
-  private var maxInterpreterThreads:Int = TaskManager.DefaultMaximumWorkers
 
   protected def newTaskManager(): TaskManager =
     new TaskManager(maximumWorkers = maxInterpreterThreads)
@@ -129,23 +136,32 @@ class ScalaInterpreter() extends Interpreter {
   }
 
   protected def refreshDefinitions(): Unit = {
-    sparkIMain.definedTerms.foreach(termName => {
-      val termNameString = termName.toString
-      val termTypeString = sparkIMain.typeOfTerm(termNameString).toLongString
-      sparkIMain.valueOfTerm(termNameString) match {
+
+    /*
+     * Refreshing values, avoids refreshing any defs
+     */
+    sparkIMain.definedTerms.map(_.toString).filterNot(sparkIMain.symbolOfTerm(_).isSourceMethod).foreach(termName => {
+      val termTypeString = sparkIMain.typeOfTerm(termName).toLongString
+      sparkIMain.valueOfTerm(termName) match {
         case Some(termValue)  =>
-          val modifiers = buildModifierList(termNameString)
-          logger.debug(s"Rebinding of $termNameString as " +
+          val modifiers = buildModifierList(termName)
+          logger.debug(s"Rebinding of $termName as " +
             s"${modifiers.mkString(" ")} $termTypeString")
           UtilTry(sparkIMain.beSilentDuring {
             sparkIMain.bind(
-              termNameString, termTypeString, termValue, modifiers
+              termName, termTypeString, termValue, modifiers
             )
           })
         case None             =>
-          logger.debug(s"Ignoring rebinding of $termNameString")
+          logger.debug(s"Ignoring rebinding of $termName")
       }
     })
+
+    /*
+     * Need to rebind the defs for sc and sqlContext
+     */
+    bindSparkContext()
+    bindSqlContext()
   }
 
   protected def reinitializeSymbols(): Unit = {
@@ -193,16 +209,9 @@ class ScalaInterpreter() extends Interpreter {
   }
 
   override def init(kernel: KernelLike): Interpreter = {
-    val args = interpreterArgs(kernel)
-    this.settings = newSettings(args)
-
-    this.settings.classpath.value = buildClasspath(_thisClassloader)
-    this.settings.embeddedDefaults(_runtimeClassloader)
-
-    maxInterpreterThreads = maxInterpreterThreads(kernel)
-
-    start()
-    bindKernelVarialble(kernel)
+    bindKernelVariable(kernel)
+    bindSparkContext()
+    bindSqlContext()
 
     this
   }
@@ -228,16 +237,12 @@ class ScalaInterpreter() extends Interpreter {
     urls.foldLeft("")((l, r) => ClassPath.join(l, r.toString))
   }
 
-  protected def interpreterArgs(kernel: KernelLike): List[String] = {
+  protected def interpreterArgs(): List[String] = {
     import scala.collection.JavaConverters._
-    kernel.config.getStringList("interpreter_args").asScala.toList
+    config.getStringList("interpreter_args").asScala.toList
   }
 
-  protected def maxInterpreterThreads(kernel: KernelLike): Int = {
-    kernel.config.getInt("max_interpreter_threads")
-  }
-
-  protected def bindKernelVarialble(kernel: KernelLike): Unit = {
+  protected def bindKernelVariable(kernel: KernelLike): Unit = {
     doQuietly {
       bind(
         "kernel", "org.apache.toree.kernel.api.Kernel",
@@ -515,17 +520,12 @@ class ScalaInterpreter() extends Interpreter {
     sparkIMain.beQuietDuring[T](body)
   }
 
-  override def bindSparkContext(sparkContext: SparkContext) = {
+  def bindSparkContext() = {
     val bindName = "sc"
 
     doQuietly {
       logger.debug(s"Binding SparkContext into interpreter as $bindName")
-      bind(
-        bindName,
-        "org.apache.spark.SparkContext",
-        sparkContext,
-        List( """@transient""")
-      )
+      interpret(s"""def ${bindName}: ${classOf[SparkContext].getName} = kernel.sparkContext""")
 
       // NOTE: This is needed because interpreter blows up after adding
       //       dependencies to SparkContext and Interpreter before the
@@ -546,21 +546,15 @@ class ScalaInterpreter() extends Interpreter {
     }
   }
 
-  override def bindSqlContext(sqlContext: SQLContext): Unit = {
+  def bindSqlContext(): Unit = {
     val bindName = "sqlContext"
 
     doQuietly {
       // TODO: This only adds the context to the main interpreter AND
       //       is limited to the Scala interpreter interface
       logger.debug(s"Binding SQLContext into interpreter as $bindName")
-      bind(
-        bindName,
-        classOf[SQLContext].getName,
-        sqlContext,
-        List( """@transient""")
-      )
 
-      sqlContext
+      interpret(s"""def ${bindName}: ${classOf[SQLContext].getName} = kernel.sqlContext""")
     }
   }
 

@@ -58,15 +58,7 @@ class InterpreterActorSpecForIntegration extends TestKit(
   private val interpreter = new ScalaInterpreter {
     override protected val multiOutputStream = MultiOutputStream(List(mock[OutputStream], lastResultOut))
 
-    override protected def interpreterArgs(kernel: KernelLike): List[String] = {
-      Nil
-    }
-
-    override protected def maxInterpreterThreads(kernel: KernelLike): Int = {
-      TaskManager.DefaultMaximumWorkers
-    }
-
-    override protected def bindKernelVarialble(kernel: KernelLike): Unit = { }
+    override protected def bindKernelVariable(kernel: KernelLike): Unit = { }
   }
 
   private val conf = new SparkConf()
@@ -77,6 +69,7 @@ class InterpreterActorSpecForIntegration extends TestKit(
 
   before {
     output.reset()
+    interpreter.start()
     interpreter.init(mock[KernelLike])
 
     interpreter.doQuietly({

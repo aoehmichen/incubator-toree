@@ -14,30 +14,15 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License
  */
+package org.apache.toree.plugins.annotations;
 
-package org.apache.toree.interpreter.broker.producer
-
-import org.apache.spark.SparkContext
-import org.apache.spark.api.java.JavaSparkContext
+import java.lang.annotation.*;
 
 /**
- * Represents a producer for a JavaSparkContext.
+ * Represents a marker for a plugin shutdown method.
  */
-trait JavaSparkContextProducerLike {
-  /**
-   * Creates a new JavaSparkContext instance.
-   *
-   * @param sparkContext The SparkContext instance to use to create the Java one
-   *
-   * @return The new JavaSparkContext
-   */
-  def newJavaSparkContext(sparkContext: SparkContext): JavaSparkContext
-}
-
-/**
- * Represents the standard producer for a JavaSparkContext.
- */
-trait StandardJavaSparkContextProducer extends JavaSparkContextProducerLike {
-  def newJavaSparkContext(sparkContext: SparkContext): JavaSparkContext =
-    new JavaSparkContext(sparkContext)
-}
+@Documented
+@Inherited
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ ElementType.METHOD })
+public @interface Destroy {}

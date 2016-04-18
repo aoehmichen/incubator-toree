@@ -15,9 +15,9 @@
 # limitations under the License
 #
 
-.PHONY: help clean clean-dist build dev test test-travis release pip-release bin-release
+.PHONY: help clean clean-dist build dev test test-travis release pip-release bin-release dev-binder .binder-image
 
-VERSION?=0.1.0.dev4
+VERSION?=0.1.0.dev5
 COMMIT=$(shell git rev-parse --short=12 --verify HEAD)
 ifeq (, $(findstring dev, $(VERSION)))
 IS_SNAPSHOT?=false
@@ -26,8 +26,10 @@ IS_SNAPSHOT?=true
 SNAPSHOT:=-SNAPSHOT
 endif
 
-APACHE_SPARK_VERSION?=1.5.1
-IMAGE?=jupyter/pyspark-notebook:2988869079e6
+APACHE_SPARK_VERSION?=1.6.1
+IMAGE?=jupyter/pyspark-notebook:8dfd60b729bf
+EXAMPLE_IMAGE?=apache/toree-examples
+BINDER_IMAGE?=apache/toree-binder
 DOCKER_WORKDIR?=/srv/toree
 DOCKER_ARGS?=
 define DOCKER
@@ -70,6 +72,25 @@ clean-dist:
 clean: VM_WORKDIR=/src/toree-kernel
 clean: clean-dist
 	$(call RUN,$(ENV_OPTS) sbt clean)
+	rm -r `find . -name target -type d`
+
+.example-image: EXTRA_CMD?=printf "deb http://cran.rstudio.com/bin/linux/debian jessie-cran3/" >> /etc/apt/sources.list; apt-key adv --keyserver keys.gnupg.net --recv-key 381BA480; apt-get update; pip install jupyter_declarativewidgets==0.4.4; jupyter declarativewidgets install --user; jupyter declarativewidgets activate; pip install jupyter_dashboards; jupyter dashboards install --user; jupyter dashboards activate; apt-get update; apt-get install --yes curl; curl --silent --location https://deb.nodesource.com/setup_0.12 | sudo bash -; apt-get install --yes nodejs r-base r-base-dev; npm install -g bower;
+.example-image:
+	@-docker rm -f examples_image
+	@docker run -it --user root --name examples_image \
+		$(IMAGE) bash -c '$(EXTRA_CMD)'
+	@docker commit examples_image $(EXAMPLE_IMAGE)
+	@-docker rm -f examples_image
+	touch $@
+
+.binder-image:
+	@docker build --rm -t $(BINDER_IMAGE) .
+
+dev-binder: .binder-image
+	@docker run --rm -it -p 8888:8888  \
+		-v `pwd`:/home/main/notebooks \
+		--workdir /home/main/notebooks $(BINDER_IMAGE) \
+		/home/main/start-notebook.sh --ip=0.0.0.0
 
 kernel/target/scala-2.10/$(ASSEMBLY_JAR): VM_WORKDIR=/src/toree-kernel
 kernel/target/scala-2.10/$(ASSEMBLY_JAR): ${shell find ./*/src/main/**/*}
@@ -79,9 +100,17 @@ kernel/target/scala-2.10/$(ASSEMBLY_JAR): project/build.properties project/Build
 
 build: kernel/target/scala-2.10/$(ASSEMBLY_JAR)
 
-dev: VM_WORKDIR=~
-dev: dist
-	$(call RUN,ipython notebook --ip=* --no-browser)
+dev: DOCKER_WORKDIR=/srv/toree/etc/examples/notebooks
+dev: SUSPEND=n
+dev: DEBUG_PORT=5005
+dev: .example-image dist
+	@$(DOCKER) \
+		-e SPARK_OPTS="--master=local[4] --driver-java-options=-agentlib:jdwp=transport=dt_socket,server=y,suspend=$(SUSPEND),address=5005" \
+		-v `pwd`/etc/kernel.json:/usr/local/share/jupyter/kernels/toree/kernel.json \
+		-p $(DEBUG_PORT):5005 -p 8888:8888 \
+		--user=root  $(EXAMPLE_IMAGE) \
+		bash -c "cp -r /srv/toree/dist/toree/* /usr/local/share/jupyter/kernels/toree/. \
+			&& jupyter notebook --ip=* --no-browser"
 
 test: VM_WORKDIR=/src/toree-kernel
 test:
@@ -120,6 +149,14 @@ release: pip-release bin-release
 		python setup.py register -r $(PYPI_REPO) && \
 		twine upload -r pypi toree-$(VERSION).tar.gz'
 
+define JUPYTER_COMMAND
+pip install toree-$(VERSION).tar.gz
+jupyter toree install --interpreters=PySpark,SQL,Scala,SparkR
+cd /srv/toree/etc/examples/notebooks
+jupyter notebook --ip=* --no-browser
+endef
+
+export JUPYTER_COMMAND
 jupyter: DOCKER_WORKDIR=/srv/toree/dist
-jupyter: pip-release
-	@$(DOCKER) -p 8888:8888 --user=root  $(IMAGE) bash -c	'pip install toree-$(VERSION).tar.gz && jupyter toree install && cd ~ && jupyter notebook --ip=* --no-browser'
+jupyter: .example-image pip-release
+	@$(DOCKER) -p 8888:8888  -e SPARK_OPTS="--master=local[4]" --user=root  $(EXAMPLE_IMAGE) bash -c "$$JUPYTER_COMMAND"
