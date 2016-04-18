@@ -19,7 +19,7 @@ scalacOptions += "-language:reflectiveCalls"
 
 // Main library dependencies to function
 libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-actor" % "2.3.4",
-  "com.typesafe.akka" %% "akka-slf4j" % "2.3.4",
-  "com.typesafe.akka" %% "akka-testkit" % "2.3.4" % "test"
+  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-actor_2.10" % "2.2.3-shaded-protobuf" else "com.typesafe.akka" %% "akka-actor"   % "2.3.4",
+  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-slf4j_2.10" % "2.2.3-shaded-protobuf" else "com.typesafe.akka" %% "akka-slf4j"   % "2.3.4",
+  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-testkit_2.10" % "2.2.3-shaded-protobuf" % "test" else "com.typesafe.akka" %% "akka-testkit" % "2.3.4" % "test"
 )

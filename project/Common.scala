@@ -54,14 +54,15 @@ object Common {
   )
 
   private val buildResolvers = Seq(
-    "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
+    "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
+    "cloudera" at "https://repository.cloudera.com/artifactory/cloudera-repos/"
   )
 
   // The prefix used for our custom artifact names
   private val artifactPrefix = "ibm-spark"
   lazy val sparkVersion = {
     val sparkEnvironmentVariable = "APACHE_SPARK_VERSION"
-    val defaultSparkVersion = "1.5.1"
+    val defaultSparkVersion = "1.6.0-cdh5.7.0"
 
     val _sparkVersion = Properties.envOrNone(sparkEnvironmentVariable)
 

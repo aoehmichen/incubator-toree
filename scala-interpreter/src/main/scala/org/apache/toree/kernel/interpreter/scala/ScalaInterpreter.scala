@@ -512,7 +512,9 @@ class ScalaInterpreter(private val config:Config = ConfigFactory.load) extends I
 
   def classServerURI = {
     require(sparkIMain != null)
-    sparkIMain.classServerUri
+    //TODO Modified by David Greco, not sure if it's correct though
+    //sparkIMain.classServerUri
+    sparkIMain.getClassOutputDirectory.toURI.toString
   }
 
   override def doQuietly[T](body: => T): T = {

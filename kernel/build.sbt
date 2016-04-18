@@ -19,8 +19,7 @@ resolvers += "cloudera" at "https://repository.cloudera.com/artifactory/cloudera
 //
 // TEST DEPENDENCIES
 //
-libraryDependencies +=
-  "org.spark-project.akka" %% "akka-testkit" % "2.3.4-spark" % "test" // MIT
+libraryDependencies += (if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-testkit_2.10" % "2.2.3-shaded-protobuf" % "test" else "org.spark-project.akka" %% "akka-testkit" % "2.3.4-spark" % "test") // MIT
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 

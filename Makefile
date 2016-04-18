@@ -26,7 +26,7 @@ IS_SNAPSHOT?=true
 SNAPSHOT:=-SNAPSHOT
 endif
 
-APACHE_SPARK_VERSION?=1.6.1
+APACHE_SPARK_VERSION?=1.6.0-cdh5.7.0
 IMAGE?=jupyter/pyspark-notebook:8dfd60b729bf
 EXAMPLE_IMAGE?=apache/toree-examples
 BINDER_IMAGE?=apache/toree-binder
