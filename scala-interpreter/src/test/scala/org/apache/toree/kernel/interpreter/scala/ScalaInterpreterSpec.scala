@@ -275,8 +275,6 @@ class ScalaInterpreterSpec extends FunSpec
       // TODO: Figure out how to trigger sparkIMain.beQuietDuring { ... }
     }
 
-    //TODO Commented out by David Greco because of lacking of the method classServerUri in the class SparkIMain in CDH 5.7.0
-    /*
     describe("#classServerUri") {
       it("should fail a require if the interpreter is not started") {
         intercept[IllegalArgumentException] {
@@ -313,7 +311,7 @@ class ScalaInterpreterSpec extends FunSpec
             throw exception
           }
         }
-        ).when(mockSparkIMain).classServerUri
+        ).when(mockSparkIMain).getClassOutputDirectory //David Greco classServerUri
 
         interpreterNoPrintStreams.start()
 
@@ -330,7 +328,7 @@ class ScalaInterpreterSpec extends FunSpec
             ex.getClass.getName should be ("org.apache.spark.ServerStateException")
         }
       }
-    }*/
+    }
 
     describe("#read") {
       it("should fail a require if the interpreter is not started") {

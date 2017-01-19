@@ -15,13 +15,14 @@
  *  limitations under the License
  */
 
-package test.utils
+package test
 
-import akka.testkit.TestKit
+import scala.concurrent.duration._
+import scala.util.Properties
 
-class NoArgSparkKernelTestKit
-  extends TestKit(SparkKernelDeployer.getNoArgSparkKernelActorSystem)
-{
-  // Force initialization of no-arg Spark Kernel
-  SparkKernelDeployer.noArgKernelBootstrap
+package object utils {
+  val TestDilation = Properties.envOrElse("TEST_DILATION", "1").toInt
+  val MaxAkkaTestTimeout = (5 * TestDilation).seconds
+  val MaxAkkaTestInterval = (100 * TestDilation).milliseconds
+
 }

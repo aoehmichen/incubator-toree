@@ -14,21 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License
  */
-resolvers += "cloudera" at "https://repository.cloudera.com/artifactory/cloudera-repos/"
 
 //
 // TEST DEPENDENCIES
 //
-libraryDependencies += (if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-testkit_2.10" % "2.2.3-shaded-protobuf" % "test" else "org.spark-project.akka" %% "akka-testkit" % "2.3.4-spark" % "test") // MIT
-
-assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
-
-//
-// CUSTOM TASKS
-//
-
-lazy val kill = taskKey[Unit]("Executing the shell script.")
-
-kill := {
-  "sh scripts/terminate_spark_kernels.sh".!
-}
+libraryDependencies ++= 
+  Seq(
+       (if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-testkit_2.10" % "2.2.3-shaded-protobuf" % "test" else "org.spark-project.akka" %% "akka-testkit" % "2.3.4-spark" % "test"), // MIT
+       "com.google.guava"  % "guava" % "19.0"
+     )

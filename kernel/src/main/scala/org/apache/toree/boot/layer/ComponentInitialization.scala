@@ -18,13 +18,15 @@
 package org.apache.toree.boot.layer
 
 import java.io.File
+import java.net.URL
+import java.nio.file.{Files, Paths}
 import java.util.concurrent.ConcurrentHashMap
 
 import akka.actor.ActorRef
 import com.typesafe.config.Config
 import org.apache.spark.SparkConf
 import org.apache.toree.comm.{CommManager, CommRegistrar, CommStorage, KernelCommManager}
-import org.apache.toree.dependencies.{CoursierDependencyDownloader, DependencyDownloader}
+import org.apache.toree.dependencies.{CoursierDependencyDownloader, Credentials, DependencyDownloader}
 import org.apache.toree.interpreter._
 import org.apache.toree.kernel.api.Kernel
 import org.apache.toree.kernel.protocol.v5.KMBuilder
@@ -116,13 +118,29 @@ trait StandardComponentInitialization extends ComponentInitialization {
   }
 
   private def initializeDependencyDownloader(config: Config) = {
-    /*val dependencyDownloader = new IvyDependencyDownloader(
-      "http://repo1.maven.org/maven2/", config.getString("ivy_local")
-    )*/
+    val depsDir = {
+      if(config.hasPath("deps_dir") && Files.exists(Paths.get(config.getString("deps_dir")))) {
+        config.getString("deps_dir")
+      } else {
+        Files.createTempDirectory("toree_add_deps").toFile.getAbsolutePath
+      }
+    }
+
     val dependencyDownloader = new CoursierDependencyDownloader
     dependencyDownloader.setDownloadDirectory(
-      new File(config.getString("ivy_local"))
+      new File(depsDir)
     )
+
+    if (config.hasPath("default_repositories")) {
+      val repository = config.getStringList("default_repositories").asScala.toList
+
+      val credentials = if (config.hasPath("default_repository_credentials")) {
+        config.getStringList("default_repository_credentials").asScala.toList
+      } else Nil
+
+      dependencyDownloader.resolveRepositoriesAndCredentials(repository, credentials)
+        .foreach{case (u, c) => dependencyDownloader.addMavenRepository(u, c)}
+    }
 
     dependencyDownloader
   }
@@ -159,8 +177,9 @@ trait StandardComponentInitialization extends ComponentInitialization {
         // TODO: Construct class server outside of SparkIMain
         logger.warn("Unable to control initialization of REPL class server!")
         logger.info("REPL Class Server Uri: " + scalaInterpreter.classServerURI)
-        conf.set("spark.repl.class.uri", scalaInterpreter.classServerURI)
-
+        //Changed by David Greco the row below to make it running with CDH5.7
+        //conf.set("spark.repl.class.uri", scalaInterpreter.classServerURI)
+        conf.set("spark.repl.class.outputDir", scalaInterpreter.classServerURI )
         theConf
       }
     }

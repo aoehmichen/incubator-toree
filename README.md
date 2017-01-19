@@ -5,7 +5,8 @@
 
 Apache Toree
 ============
-The main goal of the Toree is to provide the foundation for interactive applications to connect to and use [Apache Spark][1].
+The main goal of the Toree is to provide the foundation for interactive applications to connect to and use [Apache Spark][1]. This
+branch supports Apache Spark 1.6+. See master for Spark 2+ support.
 
 Overview
 ========
@@ -66,7 +67,7 @@ Refer to your `Docker` setup for the ip address. The notebook will be at `http:/
 Install
 =======
 ```
-pip install toree
+pip install --pre toree
 jupyter toree install
 ```
 
@@ -107,8 +108,8 @@ We are working on porting our documentation into Apache. For the time being, you
 
 [website]: http://toree.apache.org
 [issues]: https://issues.apache.org/jira/browse/TOREE
-[build-badge]: https://travis-ci.org/ibm-et/spark-kernel.svg?branch=master
-[build-url]: https://travis-ci.org/ibm-et/spark-kernel
+[build-badge]: https://travis-ci.org/apache/incubator-toree.svg?branch=master
+[build-url]: https://travis-ci.org/apache/incubator-toree
 [license-badge]: https://img.shields.io/badge/License-Apache%202-blue.svg?style=flat
 [license-url]: LICENSE
 [gitter-badge]: https://badges.gitter.im/Join%20Chat.svg

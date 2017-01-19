@@ -18,16 +18,17 @@ package org.apache.toree.kernel.interpreter.pyspark
 
 import org.apache.toree.interpreter.broker.BrokerService
 import org.apache.toree.kernel.interpreter.pyspark.PySparkTypes._
-import org.apache.spark.SparkContext
 import org.slf4j.LoggerFactory
 import py4j.GatewayServer
 
 import scala.concurrent.Future
+import scala.tools.nsc.interpreter.OutputStream
 
 /**
  * Represents the service that provides the high-level interface between the
  * JVM and Python.
  *
+ * @param pythonProcessName name of python process
  * @param gatewayServer The backend to start to communicate between the JVM and
  *                      Python
  * @param pySparkBridge The bridge to use for communication between the JVM and
@@ -36,6 +37,7 @@ import scala.concurrent.Future
  *                              the PySpark process
  */
 class PySparkService(
+  private val pythonProcessName: String,
   private val gatewayServer: GatewayServer,
   private val pySparkBridge: PySparkBridge,
   private val pySparkProcessHandler: PySparkProcessHandler
@@ -48,6 +50,7 @@ class PySparkService(
   /** Represents the process used to execute Python code via the bridge. */
   private lazy val pySparkProcess = {
     val p = new PySparkProcess(
+      pythonProcessName,
       pySparkBridge,
       pySparkProcessHandler,
       gatewayServer.getListeningPort,
@@ -88,8 +91,8 @@ class PySparkService(
    *
    * @return The result as a future to eventually return
    */
-  def submitCode(code: Code): Future[CodeResults] = {
-    pySparkBridge.state.pushCode(code)
+  def submitCode(code: Code, kernelOutputStream: Option[OutputStream]): Future[CodeResults] = {
+    pySparkBridge.state.pushCode(code, kernelOutputStream)
   }
 
   /** Stops the running PySpark service. */

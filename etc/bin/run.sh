@@ -25,7 +25,7 @@ fi
 
 echo "Starting Spark Kernel with SPARK_HOME=$SPARK_HOME"
 
-KERNEL_ASSEMBLY=`(cd ${PROG_HOME}/lib; ls -1 toree-kernel-assembly-*.jar;)`
+KERNEL_ASSEMBLY=`(cd ${PROG_HOME}/lib; ls -1 toree-assembly-*.jar;)`
 
 # disable randomized hash for string in Python 3.3+
 export PYTHONHASHSEED=0
@@ -37,5 +37,9 @@ then
    SPARK_OPTS=${__TOREE_SPARK_OPTS__}
 fi
 
-SPARK_OPTS="--driver-class-path=\"${TOREE_ASSEMBLY}\" ${SPARK_OPTS}"
-eval exec "${SPARK_HOME}/bin/spark-submit" "${SPARK_OPTS}" --class org.apache.toree.Main "${TOREE_ASSEMBLY}" "$@"
+if [ "${TOREE_OPTS}" = "" ]
+then
+   TOREE_OPTS=${__TOREE_OPTS__}
+fi
+
+eval exec "${SPARK_HOME}/bin/spark-submit" "${SPARK_OPTS}" --class org.apache.toree.Main "${TOREE_ASSEMBLY}" "${TOREE_OPTS}" "$@"

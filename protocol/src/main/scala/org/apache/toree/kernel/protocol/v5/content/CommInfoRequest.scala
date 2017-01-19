@@ -15,24 +15,26 @@
  *  limitations under the License
  */
 
-package system
+package org.apache.toree.kernel.protocol.v5.content
 
-import org.scalatest.{BeforeAndAfterAll, Suites}
-import test.utils.SparkKernelDeployer
+import org.apache.toree.kernel.protocol.v5.KernelMessageContent
+import play.api.libs.json.Json
 
-class SuiteForSystem extends Suites(
-  new KernelCommSpecForSystem,
-  new TruncationTests
-) with BeforeAndAfterAll {
-  override protected def beforeAll(): Unit = {
-    // Initialize the kernel for system tests
-    println("Initializing kernel for system tests")
-    SparkKernelDeployer.noArgKernelBootstrap
-  }
+case class CommInfoRequest(
+  target_name: String
+) extends KernelMessageContent {
+  override def content : String =
+    Json.toJson(this)(CommInfoRequest.commInfoRequestWrites).toString
+}
 
-  override protected def afterAll(): Unit = {
-    println("Shutting down kernel for system tests")
-    SparkKernelDeployer.noArgKernelBootstrap.shutdown()
-    println("Finished shutting down kernel!")
-  }
+object CommInfoRequest extends TypeString {
+  implicit val commInfoRequestReads = Json.reads[CommInfoRequest]
+  implicit val commInfoRequestWrites = Json.writes[CommInfoRequest]
+
+  /**
+   * Returns the type string associated with this object.
+   *
+   * @return The type as a string
+   */
+  override def toTypeString: String = "comm_info_request"
 }

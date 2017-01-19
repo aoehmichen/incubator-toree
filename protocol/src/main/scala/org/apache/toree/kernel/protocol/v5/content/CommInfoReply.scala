@@ -15,28 +15,26 @@
  *  limitations under the License
  */
 
-package org.apache.toree.utils.json
+package org.apache.toree.kernel.protocol.v5.content
 
-import org.apache.spark.sql.{DataFrame, SchemaRDD}
-import play.api.libs.json.{JsObject, JsString, Json}
+import org.apache.toree.kernel.protocol.v5.KernelMessageContent
+import play.api.libs.json.Json
 
-/**
- * Utility to convert RDD to JSON.
- */
-object RddToJson {
+case class CommInfoReply(
+  comms: Map[String, Map[String, String]]
+) extends KernelMessageContent {
+  override def content : String =
+    Json.toJson(this)(CommInfoReply.commInfoReplyWrites).toString
+}
+
+object CommInfoReply extends TypeString {
+  implicit val commInfoReplyReads = Json.reads[CommInfoReply]
+  implicit val commInfoReplyWrites = Json.writes[CommInfoReply]
 
   /**
-   * Converts a SchemaRDD to a JSON table format.
+   * Returns the type string associated with this object.
    *
-   * @param rdd The schema rdd (now a dataframe) to convert
-   *
-   * @return The resulting string representing the JSON
+   * @return The type as a string
    */
-  def convert(rdd: DataFrame, limit: Int = 10): String =
-    JsObject(Seq(
-      "type" -> JsString("rdd/schema"),
-      "columns" -> Json.toJson(rdd.schema.fieldNames),
-      "rows" -> Json.toJson(rdd.map(row =>
-        row.toSeq.map(_.toString).toArray).take(limit))
-    )).toString()
+  override def toTypeString: String = "comm_info_reply"
 }

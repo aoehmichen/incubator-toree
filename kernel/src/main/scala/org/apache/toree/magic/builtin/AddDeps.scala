@@ -17,14 +17,17 @@
 
 package org.apache.toree.magic.builtin
 
-import java.io.PrintStream
+import java.io.{File, PrintStream}
 import java.net.URL
 
+import org.apache.toree.dependencies.Credentials
 import org.apache.toree.magic._
 import org.apache.toree.magic.dependencies._
 import org.apache.toree.utils.ArgumentParsingSupport
+
 import scala.util.Try
 import org.apache.toree.plugins.annotations.Event
+
 
 class AddDeps extends LineMagic with IncludeInterpreter
   with IncludeOutputStream with IncludeSparkContext with ArgumentParsingSupport
@@ -53,6 +56,10 @@ class AddDeps extends LineMagic with IncludeInterpreter
     "repository", "Adds an additional repository to available list"
   ).withRequiredArg().ofType(classOf[String])
 
+  private val _credentials = parser.accepts(
+    "credential", "Adds a credential file to be used to the list"
+  ).withRequiredArg().ofType(classOf[String])
+
   /**
    * Execute a magic representing a line magic.
    *
@@ -64,11 +71,10 @@ class AddDeps extends LineMagic with IncludeInterpreter
     val nonOptionArgs = parseArgs(code)
     dependencyDownloader.setPrintStream(printStream)
 
-    val extraRepositories = getAll(_repository).getOrElse(Nil).map(u => (u, Try(new URL(u))))
+    val repository = getAll(_repository).getOrElse(Nil)
+    val credentials = getAll(_credentials).getOrElse(Nil)
 
-    // Print error information
-    extraRepositories.filter(_._2.isFailure).map(_._1)
-      .foreach(u => printStream.println(s"Ignoring invalid URL $u"))
+    val repositoriesWithCreds = dependencyDownloader.resolveRepositoriesAndCredentials(repository, credentials)
 
     if (nonOptionArgs.size == 3) {
       // get the jars and hold onto the paths at which they reside
@@ -78,7 +84,7 @@ class AddDeps extends LineMagic with IncludeInterpreter
         version                 = nonOptionArgs(2),
         transitive              = _transitive,
         ignoreResolutionErrors  = !_abortOnResolutionErrors,
-        extraRepositories       = extraRepositories.flatMap(_._2.toOption),
+        extraRepositories       = repositoriesWithCreds,
         verbose                 = _verbose,
         trace                   = _trace
       ).map(_.toURL)
@@ -90,4 +96,6 @@ class AddDeps extends LineMagic with IncludeInterpreter
       printHelp(printStream, """%AddDeps my.company artifact-id version""")
     }
   }
+
+
 }

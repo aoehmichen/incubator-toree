@@ -17,8 +17,8 @@
 
 libraryDependencies ++= Seq(
   // LGPL with static linking exception
-  "org.zeromq"        % "jeromq"        % "0.3.4",
-  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-actor_2.10" % "2.2.3-shaded-protobuf" else "com.typesafe.akka" %% "akka-actor"   % "2.3.11",
-  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-slf4j_2.10" % "2.2.3-shaded-protobuf" else "com.typesafe.akka" %% "akka-slf4j"   % "2.3.11",
-  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-testkit_2.10" % "2.2.3-shaded-protobuf" % "test" else "com.typesafe.akka" %% "akka-testkit" % "2.3.11" % "test"
+  "org.zeromq"        % "jeromq"        % "0.3.6",
+  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-actor_2.10" % "2.2.3-shaded-protobuf" else "com.typesafe.akka" %% "akka-actor"   % "2.3.15",
+  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-slf4j_2.10" % "2.2.3-shaded-protobuf" else "com.typesafe.akka" %% "akka-slf4j"   % "2.3.15",
+  if (Common.sparkVersion.contains("cdh")) "org.spark-project.akka" % "akka-testkit_2.10" % "2.2.3-shaded-protobuf" % "test" else "com.typesafe.akka" %% "akka-testkit" % "2.3.15" % "test"
 )

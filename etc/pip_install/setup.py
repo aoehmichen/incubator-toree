@@ -26,13 +26,23 @@ with open(os.path.join(here, 'toree', '_version.py')) as f:
     exec(f.read(), {}, version_ns)
 
 setup_args = dict(
-    name='toree',
-    author='Toree Development Team',
-    author_email='user@toree.incubator.apache.org',
+    name='apache-toree',
+    author='Apache Toree Development Team',
+    author_email='dev@toree.incubator.apache.org',
     description='A Jupyter kernel for enabling remote applications to interaction with Apache Spark.',
     long_description = '''
-    A python package for installing the Toree kernel. This will install a Jupyter
-    application which can be invoked to install the kernel.
+    This package will install Apache Toree as a Jupyter kernel.
+
+    Apache Toree is an effort undergoing incubation at the Apache Software
+    Foundation (ASF), sponsored by the Apache Incubator PMC.
+
+    Incubation is required of all newly accepted projects until a further review
+    indicates that the infrastructure, communications, and decision making process
+    have stabilized in a manner consistent with other successful ASF projects.
+
+    While incubation status is not necessarily a reflection of the completeness
+    or stability of the code, it does indicate that the project has yet to be
+    fully endorsed by the ASF.
     ''',
     url='http://toree.incubator.apache.org/',
     version=version_ns['__version__'],
@@ -51,7 +61,8 @@ setup_args = dict(
         'Intended Audience :: System Administrators',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python'
+        'Programming Language :: Python',
+        'Programming Language :: SQL'
     ]
 )
 

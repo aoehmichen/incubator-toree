@@ -16,9 +16,9 @@
  */
 package org.apache.toree.interpreter.broker
 
-import org.scalatest.{OneInstancePerTest, Matchers, FunSpec}
+import org.scalatest.{FunSpec, Matchers, OneInstancePerTest}
 
-import scala.util.{Failure, Success}
+import scala.util.Success
 
 class BrokerStateSpec extends FunSpec with Matchers with OneInstancePerTest {
 

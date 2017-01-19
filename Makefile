@@ -15,9 +15,10 @@
 # limitations under the License
 #
 
-.PHONY: help clean clean-dist build dev test test-travis release pip-release bin-release dev-binder .binder-image
+.PHONY: help clean clean-dist build dev test system-test test-travis release pip-release bin-release dev-binder .binder-image audit audit-licenses
 
-VERSION?=0.1.0.dev5
+BASE_VERSION=0.1.0
+VERSION=$(BASE_VERSION)-incubating
 COMMIT=$(shell git rev-parse --short=12 --verify HEAD)
 ifeq (, $(findstring dev, $(VERSION)))
 IS_SNAPSHOT?=false
@@ -29,6 +30,8 @@ endif
 APACHE_SPARK_VERSION?=1.6.0-cdh5.7.0
 IMAGE?=jupyter/pyspark-notebook:8dfd60b729bf
 EXAMPLE_IMAGE?=apache/toree-examples
+GPG?=/usr/local/bin/gpg
+GPG_PASSWORD?=
 BINDER_IMAGE?=apache/toree-binder
 DOCKER_WORKDIR?=/srv/toree
 DOCKER_ARGS?=
@@ -40,8 +43,8 @@ docker run -it --rm \
 endef
 
 define GEN_PIP_PACKAGE_INFO
-printf "__version__ = '$(VERSION)'\n" >> dist/toree/_version.py
-printf "__commit__ = '$(COMMIT)'\n" >> dist/toree/_version.py
+printf "__version__ = '$(BASE_VERSION)'\n" >> dist/toree-pip/toree/_version.py
+printf "__commit__ = '$(COMMIT)'\n" >> dist/toree-pip/toree/_version.py
 endef
 
 USE_VAGRANT?=
@@ -52,9 +55,10 @@ RUN=$(RUN_PREFIX)$(1)$(RUN_SUFFIX)
 
 ENV_OPTS:=APACHE_SPARK_VERSION=$(APACHE_SPARK_VERSION) VERSION=$(VERSION) IS_SNAPSHOT=$(IS_SNAPSHOT)
 
-ASSEMBLY_JAR:=toree-kernel-assembly-$(VERSION)$(SNAPSHOT).jar
+ASSEMBLY_JAR:=toree-assembly-$(VERSION)$(SNAPSHOT).jar
 
 help:
+	@echo '      audit - run audit tools against the source code'
 	@echo '      clean - clean build files'
 	@echo '        dev - starts ipython'
 	@echo '       dist - build a directory with contents to package'
@@ -92,13 +96,13 @@ dev-binder: .binder-image
 		--workdir /home/main/notebooks $(BINDER_IMAGE) \
 		/home/main/start-notebook.sh --ip=0.0.0.0
 
-kernel/target/scala-2.10/$(ASSEMBLY_JAR): VM_WORKDIR=/src/toree-kernel
-kernel/target/scala-2.10/$(ASSEMBLY_JAR): ${shell find ./*/src/main/**/*}
-kernel/target/scala-2.10/$(ASSEMBLY_JAR): ${shell find ./*/build.sbt}
-kernel/target/scala-2.10/$(ASSEMBLY_JAR): project/build.properties project/Build.scala project/Common.scala project/plugins.sbt
-	$(call RUN,$(ENV_OPTS) sbt toree-kernel/assembly)
+target/scala-2.10/$(ASSEMBLY_JAR): VM_WORKDIR=/src/toree-kernel
+target/scala-2.10/$(ASSEMBLY_JAR): ${shell find ./*/src/main/**/*}
+target/scala-2.10/$(ASSEMBLY_JAR): ${shell find ./*/build.sbt}
+target/scala-2.10/$(ASSEMBLY_JAR): dist/toree-legal project/build.properties build.sbt project/common.scala project/plugins.sbt
+	$(call RUN,$(ENV_OPTS) sbt toree/assembly)
 
-build: kernel/target/scala-2.10/$(ASSEMBLY_JAR)
+build: target/scala-2.10/$(ASSEMBLY_JAR)
 
 dev: DOCKER_WORKDIR=/srv/toree/etc/examples/notebooks
 dev: SUSPEND=n
@@ -114,49 +118,172 @@ dev: .example-image dist
 
 test: VM_WORKDIR=/src/toree-kernel
 test:
-	$(call RUN,$(ENV_OPTS) sbt compile test)
+	$(call RUN,$(ENV_OPTS) JAVA_OPTS="-Xmx4096M" sbt compile test)
 
-dist: VERSION_FILE=dist/toree/VERSION
-dist: kernel/target/scala-2.10/$(ASSEMBLY_JAR) ${shell find ./etc/bin/*}
-	@mkdir -p dist/toree/bin dist/toree/lib
+sbt-%:
+	$(call RUN,$(ENV_OPTS) sbt $(subst sbt-,,$@) )
+
+dist/toree/lib: target/scala-2.10/$(ASSEMBLY_JAR)
+	@mkdir -p dist/toree/lib
+	@cp target/scala-2.10/$(ASSEMBLY_JAR) dist/toree/lib/.
+
+dist/toree/bin: ${shell find ./etc/bin/*}
+	@mkdir -p dist/toree/bin
 	@cp -r etc/bin/* dist/toree/bin/.
-	@cp kernel/target/scala-2.10/$(ASSEMBLY_JAR) dist/toree/lib/.
-	@echo "VERSION: $(VERSION)" > $(VERSION_FILE)
-	@echo "COMMIT: $(COMMIT)" >> $(VERSION_FILE)
 
-test-travis:
-	$(ENV_OPTS) sbt clean test -Dakka.test.timefactor=3
-	find $(HOME)/.sbt -name "*.lock" | xargs rm
-	find $(HOME)/.ivy2 -name "ivydata-*.properties" | xargs rm
+dist/toree/VERSION:
+	@mkdir -p dist/toree
+	@echo "VERSION: $(VERSION)" > dist/toree/VERSION
+	@echo "COMMIT: $(COMMIT)" >> dist/toree/VERSION
 
-pip-release: DOCKER_WORKDIR=/srv/toree/dist
-pip-release: dist
-	@cp -rf etc/pip_install/* dist/.
-	@$(GEN_PIP_PACKAGE_INFO)
-	@$(DOCKER) $(IMAGE) python setup.py sdist --dist-dir=.
-	@$(DOCKER) -p 8888:8888 --user=root  $(IMAGE) bash -c	'pip install toree-$(VERSION).tar.gz && jupyter toree install'
+dist/toree-legal/LICENSE: LICENSE etc/legal/LICENSE_extras
+	@mkdir -p dist/toree-legal
+	@cat LICENSE > dist/toree-legal/LICENSE
+	@echo '\n' >> dist/toree-legal/LICENSE
+	@cat etc/legal/LICENSE_extras >> dist/toree-legal/LICENSE
 
-bin-release: dist
-	@(cd dist; tar -cvzf toree-$(VERSION)-binary-release.tar.gz toree)
+dist/toree-legal/NOTICE: NOTICE etc/legal/NOTICE_extras
+	@mkdir -p dist/toree-legal
+	@cat NOTICE > dist/toree-legal/NOTICE
+	@echo '\n' >> dist/toree-legal/NOTICE
+	@cat etc/legal/NOTICE_extras >> dist/toree-legal/NOTICE
 
-release: DOCKER_WORKDIR=/srv/toree/dist
-release: PYPI_REPO?=https://pypi.python.org/pypi
-release: PYPI_USER?=
-release: PYPI_PASSWORD?=
-release: PYPIRC=printf "[distutils]\nindex-servers =\n\tpypi\n\n[pypi]\nrepository: $(PYPI_REPO) \nusername: $(PYPI_USER)\npassword: $(PYPI_PASSWORD)" > ~/.pypirc;
-release: pip-release bin-release
-	@$(DOCKER) $(IMAGE) bash -c '$(PYPIRC) pip install twine && \
-		python setup.py register -r $(PYPI_REPO) && \
-		twine upload -r pypi toree-$(VERSION).tar.gz'
+dist/toree-legal/DISCLAIMER:
+	@mkdir -p dist/toree-legal
+	@cp DISCLAIMER dist/toree-legal/DISCLAIMER
+
+dist/toree-legal: dist/toree-legal/LICENSE dist/toree-legal/NOTICE dist/toree-legal/DISCLAIMER
+	@cp -R etc/legal/licenses dist/toree-legal/.
+
+dist/toree: dist/toree/VERSION dist/toree-legal dist/toree/lib dist/toree/bin RELEASE_NOTES.md
+	@cp -R dist/toree-legal/* dist/toree
+	@cp RELEASE_NOTES.md dist/toree/RELEASE_NOTES.md
+
+dist: dist/toree
 
 define JUPYTER_COMMAND
-pip install toree-$(VERSION).tar.gz
+pip install toree-$(BASE_VERSION).tar.gz
 jupyter toree install --interpreters=PySpark,SQL,Scala,SparkR
 cd /srv/toree/etc/examples/notebooks
 jupyter notebook --ip=* --no-browser
 endef
 
 export JUPYTER_COMMAND
-jupyter: DOCKER_WORKDIR=/srv/toree/dist
+jupyter: DOCKER_WORKDIR=/srv/toree/dist/toree-pip
 jupyter: .example-image pip-release
 	@$(DOCKER) -p 8888:8888  -e SPARK_OPTS="--master=local[4]" --user=root  $(EXAMPLE_IMAGE) bash -c "$$JUPYTER_COMMAND"
+
+################################################################################
+# System Tests Using Jupyter Kernel Test (https://github.com/jupyter/jupyter_kernel_test)
+################################################################################
+system-test: pip-release
+	@echo '-- Running jupyter kernel tests'
+	@docker run --rm -ti \
+		--name jupyter_kernel_tests \
+		-v `pwd`/dist/toree-pip:/srv/toree-pip \
+		-v `pwd`/test_toree.py:/srv/test_toree.py \
+		-v `pwd`/scala-interpreter/src/test/resources:/srv/system-test-resources \
+		--user=root \
+		$(IMAGE) \
+		bash -c "(cd /srv/system-test-resources && python -m http.server 8000 &) && \
+		pip install /srv/toree-pip/toree*.tar.gz && jupyter toree install --interpreters=PySpark,Scala && \
+		pip install nose jupyter_kernel_test && python /srv/test_toree.py"
+
+################################################################################
+# Jars
+################################################################################
+publish-jars:
+	@$(ENV_OPTS) GPG_PASSWORD='$(GPG_PASSWORD)' GPG=$(GPG) sbt publish-signed
+
+################################################################################
+# PIP PACKAGE
+################################################################################
+dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz: DOCKER_WORKDIR=/srv/toree/dist/toree-pip
+dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz: dist/toree
+	@mkdir -p dist/toree-pip
+	@cp -r dist/toree dist/toree-pip
+	@cp dist/toree/LICENSE dist/toree-pip/LICENSE
+	@cp dist/toree/NOTICE dist/toree-pip/NOTICE
+	@cp dist/toree/DISCLAIMER dist/toree-pip/DISCLAIMER
+	@cp dist/toree/VERSION dist/toree-pip/VERSION
+	@cp dist/toree/RELEASE_NOTES.md dist/toree-pip/RELEASE_NOTES.md
+	@cp -R dist/toree/licenses dist/toree-pip/licenses
+	@cp -rf etc/pip_install/* dist/toree-pip/.
+	@$(GEN_PIP_PACKAGE_INFO)
+	@$(DOCKER) --user=root $(IMAGE) python setup.py sdist --dist-dir=.
+	@$(DOCKER) -p 8888:8888 --user=root  $(IMAGE) bash -c	'pip install apache-toree-$(BASE_VERSION).tar.gz && jupyter toree install'
+	-@(cd dist/toree-pip; find . -not -name 'apache-toree-$(BASE_VERSION).tar.gz' -maxdepth 1 | xargs rm -r )
+
+pip-release: dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz
+
+dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz.md5 dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz.asc dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz.sha: dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz
+	@GPG_PASSWORD='$(GPG_PASSWORD)' GPG=$(GPG) etc/tools/./sign-file dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz
+
+sign-pip: dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz.md5 dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz.asc dist/toree-pip/apache-toree-$(BASE_VERSION).tar.gz.sha
+
+publish-pip: DOCKER_WORKDIR=/srv/toree/dist/toree-pip
+publish-pip: PYPI_REPO?=https://pypi.python.org/pypi
+publish-pip: PYPI_USER?=
+publish-pip: PYPI_PASSWORD?=
+publish-pip: PYPIRC=printf "[distutils]\nindex-servers =\n\tpypi\n\n[pypi]\nrepository: $(PYPI_REPO) \nusername: $(PYPI_USER)\npassword: $(PYPI_PASSWORD)" > ~/.pypirc;
+publish-pip: sign-pip
+	@$(DOCKER) $(IMAGE) bash -c '$(PYPIRC) pip install twine && \
+		python setup.py register -r $(PYPI_REPO) && \
+		twine upload -r pypi apache-toree-$(BASE_VERSION).tar.gz apache-toree-$(BASE_VERSION).tar.gz.asc'
+
+################################################################################
+# BIN PACKAGE
+################################################################################
+dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz: dist/toree
+	@mkdir -p dist/toree-bin
+	@(cd dist; tar -cvzf toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz toree)
+
+bin-release: dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz
+
+dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz.md5 dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz.asc dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz.sha: dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz
+	@GPG_PASSWORD='$(GPG_PASSWORD)' GPG=$(GPG) etc/tools/./sign-file dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz
+
+sign-bin: dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz.md5 dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz.asc dist/toree-bin/apache-toree-$(VERSION)-binary-release.tar.gz.sha
+
+publish-bin:
+
+################################################################################
+# SRC PACKAGE
+################################################################################
+dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz: dist/toree-legal
+	@mkdir -p dist/toree-src
+	@tar -X 'etc/.src-release-ignore' -cvf dist/toree-src/apache-toree-$(VERSION)-source-release.tar .
+	@tar -rvf dist/toree-src/apache-toree-$(VERSION)-source-release.tar -C dist/toree-legal .
+	@gzip dist/toree-src/apache-toree-$(VERSION)-source-release.tar
+
+src-release: dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz
+
+dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz.md5 dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz.asc dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz.sha: dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz
+	@GPG_PASSWORD='$(GPG_PASSWORD)' GPG=$(GPG) etc/tools/./sign-file dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz
+
+sign-src: dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz.md5 dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz.asc dist/toree-src/apache-toree-$(VERSION)-source-release.tar.gz.sha
+
+publish-src:
+
+################################################################################
+# ALL PACKAGES
+################################################################################
+release: pip-release src-release bin-release sign
+
+sign: sign-bin sign-src sign-pip
+
+audit-licenses:
+	@etc/tools/./check-licenses
+
+audit: sign audit-licenses
+	@etc/tools/./verify-release dist/toree-bin dist/toree-src dist/toree-pip
+
+publish: audit publish-bin publish-pip publish-src publish-jars
+
+all: clean test system-test audit
+
+all-travis: clean test system-test audit-licenses
+
+clean-travis:
+	find $(HOME)/.sbt -name "*.lock" | xargs rm
+	find $(HOME)/.ivy2 -name "ivydata-*.properties" | xargs rm

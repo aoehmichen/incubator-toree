@@ -18,6 +18,7 @@
 package org.apache.toree.boot
 
 import akka.actor.{ActorRef, ActorSystem}
+import com.typesafe.config.Config
 import org.apache.toree.boot.layer._
 import org.apache.toree.interpreter.Interpreter
 import org.apache.toree.kernel.api.Kernel
@@ -26,8 +27,6 @@ import org.apache.toree.kernel.protocol.v5._
 import org.apache.toree.kernel.protocol.v5.kernel.ActorLoader
 import org.apache.toree.security.KernelSecurityManager
 import org.apache.toree.utils.LogLike
-import com.typesafe.config.Config
-import org.apache.spark.SparkContext
 import org.zeromq.ZMQ
 
 import scala.util.Try
@@ -45,7 +44,6 @@ class KernelBootstrap(config: Config) extends LogLike {
   private var statusDispatch: ActorRef          = _
   private var kernel: Kernel                    = _
 
-  private var sparkContext: SparkContext        = _
   private var interpreters: Seq[Interpreter]    = Nil
 
   /**
@@ -91,7 +89,6 @@ class KernelBootstrap(config: Config) extends LogLike {
         appName     = DefaultAppName,
         actorLoader = actorLoader
       )
-    //this.sparkContext = sparkContext
     this.interpreters ++= Seq(interpreter)
 
     this.kernel = kernel
@@ -127,11 +124,6 @@ class KernelBootstrap(config: Config) extends LogLike {
    * Shuts down all kernel systems.
    */
   def shutdown() = {
-    logger.info("Shutting down Spark Context")
-    Try(kernel.sparkContext.stop()).failed.foreach(
-      logger.error("Failed to shutdown Spark Context", _: Throwable)
-    )
-
     logger.info("Shutting down interpreters")
     Try(interpreters.foreach(_.stop())).failed.foreach(
       logger.error("Failed to shutdown interpreters", _: Throwable)
@@ -167,8 +159,7 @@ class KernelBootstrap(config: Config) extends LogLike {
 
   @inline private def displayVersionInfo() = {
     logger.info("Kernel version: " + SparkKernelInfo.implementationVersion)
-    logger.info("Scala version: " + SparkKernelInfo.languageVersion)
+    logger.info("Scala version: " + SparkKernelInfo.language_info.get("version"))
     logger.info("ZeroMQ (JeroMQ) version: " + ZMQ.getVersionString)
   }
 }
-

@@ -15,10 +15,9 @@
 # limitations under the License.
 #
 
+import os
 import os.path
-import sys
 import json
-import shutil
 from os import listdir
 from traitlets import Unicode, Dict, Set
 from jupyter_client.kernelspecapp  import InstallKernelSpec
@@ -37,7 +36,9 @@ INTERPRETER_LANGUAGES = {
 PYTHON_PATH = 'PYTHONPATH'
 SPARK_HOME ='SPARK_HOME'
 TOREE_SPARK_OPTS = '__TOREE_SPARK_OPTS__'
+TOREE_OPTS = '__TOREE_OPTS__'
 DEFAULT_INTERPRETER = 'DEFAULT_INTERPRETER'
+PYTHON_EXEC = 'PYTHON_EXEC'
 
 class ToreeInstall(InstallKernelSpec):
     '''CLI for extension management.'''
@@ -48,26 +49,36 @@ class ToreeInstall(InstallKernelSpec):
     jupyter toree install --spark_home=/spark/home/dir
     jupyter toree install --spark_opts='--master=local[4]'
     jupyter toree install --kernel_name=toree_special
+    jupyter toree install --toree_opts='--nosparkcontext'
     jupyter toree install --interpreters=PySpark,SQL
+    jupyter toree install --python=python
     '''
 
-    spark_home = Unicode('/usr/local/spark', config=True,
+    spark_home = Unicode(os.getenv(SPARK_HOME, '/usr/local/spark'), config=True,
         help='''Specify where the spark files can be found.'''
     )
-    kernel_name = Unicode('Toree', config=True,
+    kernel_name = Unicode('Apache Toree', config=True,
         help='Install the kernel spec with this name. This is also used as the base of the display name in jupyter.'
     )
     interpreters = Unicode('Scala', config=True,
-        help='A comma seperated list of the interpreters to install. The names of the interpreters are case sensitive.'
+        help='A comma separated list of the interpreters to install. The names of the interpreters are case sensitive.'
+    )
+    toree_opts = Unicode('', config=True,
+        help='''Specify command line arguments for Apache Toree.'''
     )
     spark_opts = Unicode('', config=True,
         help='''Specify command line arguments to proxy for spark config.'''
     )
+    python_exec = Unicode('python', config=True,
+        help='''Specify the python executable. Defaults to "python"'''
+    )
     aliases = {
         'kernel_name': 'ToreeInstall.kernel_name',
         'spark_home': 'ToreeInstall.spark_home',
+        'toree_opts': 'ToreeInstall.toree_opts',
         'spark_opts': 'ToreeInstall.spark_opts',
-        'interpreters' : 'ToreeInstall.interpreters'
+        'interpreters' : 'ToreeInstall.interpreters',
+        'python_exec' : 'ToreeInstall.python_exec'
     }
     aliases.update(base_aliases)
 
@@ -92,8 +103,10 @@ class ToreeInstall(InstallKernelSpec):
             # The SPARK_OPTS values are stored in TOREE_SPARK_OPTS to allow the two values to be merged when kernels
             # are run. This allows values to be specified during install, but also during runtime.
             TOREE_SPARK_OPTS : self.spark_opts,
+            TOREE_OPTS : self.toree_opts,
             SPARK_HOME : self.spark_home,
-            PYTHON_PATH : '{0}/python:{0}/python/lib/{1}'.format(self.spark_home, py4j_zip)
+            PYTHON_PATH : '{0}/python:{0}/python/lib/{1}'.format(self.spark_home, py4j_zip),
+            PYTHON_EXEC : self.python_exec
         }
 
         kernel_json_file = os.path.join(location, 'kernel.json')
@@ -102,10 +115,15 @@ class ToreeInstall(InstallKernelSpec):
             json.dump(kernel_spec.to_dict(), f, indent=2)
 
     def start(self):
+        self.log.info('Installing Apache Toree version {}'.format(__version__))
+
         self.sourcedir = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+
+        disclaimer_file = open(os.path.join(self.sourcedir, 'DISCLAIMER'))
+        self.log.info('\n{}'.format(disclaimer_file.read()))
         for interpreter in self.interpreters.split(','):
             if interpreter in INTERPRETER_LANGUAGES:
-                self.log.info('Installing toree kernel with interpreter {}'.format(interpreter))
+                self.log.info('Creating kernel {}'.format(interpreter))
                 install_dir = self.kernel_spec_manager.install_kernel_spec(self.sourcedir,
                      kernel_name='{}_{}'.format(self.kernel_name, interpreter.lower()).replace(' ', '_'),
                      user=self.user,
@@ -119,11 +137,11 @@ class ToreeInstall(InstallKernelSpec):
 class ToreeApp(Application):
     version = __version__
     name = 'jupyter toree'
-    description = '''Functions for managing the Toree kernel.
-    This package was built with the following versions of Toree and Spark:
+    description = '''Functions for managing the Apache Toree kernel.
+    This package was built with the following versions of Apache Toree and Spark:
 
-    \tToree Version: {}
-    \tToree Build Commit: {}
+    \tApache Toree Version: {}
+    \tApache Toree Build Commit: {}
     '''.format(__version__, __commit__)
     examples = '''
     jupyter toree install - Installs the kernel as a Jupyter Kernel.

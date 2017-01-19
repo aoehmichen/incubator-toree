@@ -29,13 +29,13 @@ addSbtPlugin("com.eed3si9n" % "sbt-unidoc" % "0.3.1")
 
 // Provides the ability to list dependencies in a readable format using
 // `sbt dependencyTree`; there are other commands provided as well
-addSbtPlugin("net.virtual-void" % "sbt-dependency-graph" % "0.7.4")
+addSbtPlugin("net.virtual-void" % "sbt-dependency-graph" % "0.8.2")
 
 // Provides abilit to create an uber-jar
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.0")
 
 // Provides a generated build info object to sync between build and application
-addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.3.2")
+addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.6.1")
 
 // Provides code coverage support
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.0.4")
@@ -50,4 +50,7 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-site" % "0.8.1")
 addSbtPlugin("com.typesafe.sbt" % "sbt-ghpages" % "0.5.3")
 
 // Provides alternative resolving/downloading over sbt
-addSbtPlugin("com.github.alexarchambault" % "coursier-sbt-plugin" % "1.0.0-M10")
+addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.0-M12")
+
+//  Used for signing jars published via `sbt publish-signed`
+addSbtPlugin("com.jsuereth" % "sbt-pgp" % "1.0.0")
